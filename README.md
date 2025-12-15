@@ -46,18 +46,16 @@ Hệ thống được xây dựng theo **Kappa Architecture** (Streaming-first),
 5.  **Serving**: **Streamlit Dashboard** hiển thị biểu đồ và **Alert Engine** gửi cảnh báo qua Telegram nếu vượt ngưỡng.
 
 ### 2.2. Component Diagram
-
-```mermaid
 graph LR
     User[Livestream Users] -->|Chat| Producer[Chat Producer]
     Producer --> Kafka[Apache Kafka]
     Kafka --> Spark[Spark Structured Streaming]
-
-    Spark --> Pre[Text Normalization]
-    Pre --> Model[ONNX NLP Inference]
-    Model --> Agg[Window Aggregation]
-
-    Agg --> DB[(Postgres / Elasticsearch)]
+    subgraph "Spark Processing Core"
+        Spark --> Pre[Text Normalization]
+        Pre --> Model[ONNX NLP Inference]
+        Model --> Agg[Window Aggregation]
+    end
+    Agg --> DB[(PostgreSQL / Elasticsearch)]
     DB --> UI[Streamlit Dashboard]
 
 
