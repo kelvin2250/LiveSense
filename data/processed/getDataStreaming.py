@@ -5,8 +5,8 @@ import os
 
 # Configuration
 VIDEO_URL = 'https://www.youtube.com/watch?v=QP_XewZa1sU'
-OUTPUT_JSON = 'youtube_chat_temp.json' # File tạm chứa toàn bộ chat
-OUTPUT_CSV = 'live_chat_1000.csv'      # File kết quả
+OUTPUT_JSON = 'youtube_chat_temp.json' 
+OUTPUT_CSV = 'live_chat_1000.csv'      
 LIMIT_MSG = 1000                      
 
 def download_chat_raw(video_url):
