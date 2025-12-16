@@ -1,0 +1,11 @@
+pyspark==3.5.1
+kafka-python
+streamlit
+numpy 
+pandas 
+plotly
+torch 
+torchvision 
+torchaudio 
+google-api-python-client
+dotenv
