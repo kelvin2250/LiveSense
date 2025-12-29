@@ -1,0 +1,18 @@
+FROM apache/spark:latest
+USER root
+
+# Tạo home hợp lệ cho Spark
+ENV HOME=/home/spark
+RUN mkdir -p /home/spark/.ivy2 && \
+    chown -R 185:185 /home/spark
+
+# Cài thư viện Python cần thiết
+RUN apt-get update && apt-get install -y python3 python3-pip && \
+    pip3 install --no-cache-dir \
+        pyspark \
+        redis \
+        pandas \
+        kafka-python
+
+USER 185
+WORKDIR /app

@@ -4,10 +4,10 @@ import json
 import os
 
 # Configuration
-VIDEO_URL = 'https://www.youtube.com/watch?v=QP_XewZa1sU'
+VIDEO_URL = 'https://www.youtube.com/live/AOhgqGKdo_0?si=PSKzqbBRa41TkG6_'
 OUTPUT_JSON = 'youtube_chat_temp.json' 
-OUTPUT_CSV = 'live_chat_1000.csv'      
-LIMIT_MSG = 1000                      
+OUTPUT_CSV = 'live_chat_3000.csv'      
+LIMIT_MSG = 3000                      
 
 def download_chat_raw(video_url):
     print(f"[Bước 1] Đang tải dữ liệu chat thô từ YouTube...")
@@ -32,8 +32,6 @@ def download_chat_raw(video_url):
         return False
 
 def process_json_to_csv_limited():
-    print(f"[Bước 2] Đang lọc lấy {LIMIT_MSG} bình luận đầu tiên...")
-    
     # Tìm file json vừa tải (vì yt-dlp hay tự đổi tên file)
     target_file = None
     for f in os.listdir():
@@ -50,11 +48,6 @@ def process_json_to_csv_limited():
     # Đọc file và lọc
     with open(target_file, 'r', encoding='utf-8') as f:
         for line in f:
-            # Kiểm tra giới hạn TRƯỚC khi xử lý
-            if len(chats) >= LIMIT_MSG:
-                print(f"Đã đủ {LIMIT_MSG} tin nhắn. Dừng xử lý!")
-                break
-
             try:
                 item = json.loads(line)
                 
@@ -75,9 +68,7 @@ def process_json_to_csv_limited():
                                 'message': message,
                                 'timestamp': timestamp
                             })
-                        
-                            if len(chats) >= LIMIT_MSG:
-                                break
+                    
                                 
             except Exception:
                 continue
