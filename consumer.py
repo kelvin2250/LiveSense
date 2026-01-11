@@ -1,159 +1,223 @@
-import json, redis
+import sys
+import argparse
+import json
+import redis
 import builtins
-import random
+import traceback
+import os
+import pandas as pd
 from datetime import datetime
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import *
 from pyspark.sql.types import *
 
-# ======================
-# 1) SPARK SESSION (Docker)
-# ======================
-spark = SparkSession.builder \
-    .appName("LiveSense-QoE-Docker") \
-    .master("spark://spark-master:7077") \
-    .config("spark.jars.packages", "org.apache.spark:spark-sql-kafka-0-10_2.13:4.1.0,org.postgresql:postgresql:42.7.3") \
-    .config("spark.driver.extraJavaOptions", "-Duser.home=/home/spark") \
-    .getOrCreate()
+try:
+    from onnx_inference import ONNXSetFitPredictor, ONNXAutoModelClassifier
+    print("✅ Imported onnx_inference module successfully.")
+except ImportError as e:
+    print(f"❌ Error importing onnx_inference: {e}")
+    sys.exit(1)
 
-spark.sparkContext.setLogLevel("WARN")
+# ==========================================
+# 1. GLOBAL MODEL INITIALIZATION (LOAD ONCE)
+# ==========================================
+# Lưu ý: Đường dẫn này là đường dẫn LINUX trong Docker
+ONNX_DIR = "/app/onnx_models"
 
-# 2) REDIS KẾT NỐI TRONG DOCKER
-redis_client = redis.Redis(host="redis", port=6379, db=0, decode_responses=True)
+print("🧠 Loading ONNX Models...")
+try:
+    toxicity_predictor = ONNXSetFitPredictor(
+        encoder_path=os.path.join(ONNX_DIR, "toxicity_encoder_onnx"),
+        classifier_path=os.path.join(ONNX_DIR, "toxicity_classifier.onnx"),
+        labels_path=os.path.join(ONNX_DIR, "toxicity_labels.txt")
+    )
 
-# 3) SCHEMA DỮ LIỆU KAFKA
-chat_schema = StructType([
-    StructField("id", IntegerType()),
-    StructField("author", StringType()),
-    StructField("message", StringType()),
-    StructField("timestamp", TimestampType()),
-    StructField("platform", StringType())
-])
-# 4) LOGIC DỰ ĐOÁN / SIGNAL
-import random
-import json
-import builtins
-from datetime import datetime
+    emotion_predictor = ONNXSetFitPredictor(
+        encoder_path=os.path.join(ONNX_DIR, "emotion_encoder_onnx"),
+        classifier_path=os.path.join(ONNX_DIR, "emotion_classifier.onnx"),
+        labels_path=os.path.join(ONNX_DIR, "emotion_labels.txt")
+    )
 
-def process_batch(batch_df, batch_id):
-    if batch_df.isEmpty():
-        return
-    
-    # Chuyển đổi sang Pandas để xử lý logic tính toán
-    df = batch_df.toPandas()
-    total = len(df)
-    
-    # ==========================================
-    # 1. GIẢ LẬP AI LABELING (MOCKUP DATA)
-    # ==========================================
-    # Các nhãn này sau này sẽ được thay thế bởi 3 model của bạn
-    interaction_opts = ['Technical_issue', 'Performance_feedback', 'Viewer_request', 'Reaction', 'other']
-    emotion_opts = ['Neutral', 'Excitement', 'Frustration', 'Disappointment']
-    toxic_opts = ['Clean', 'Playful_toxic', 'Aggressive_Toxic', 'Severe_Toxic']
+    interaction_predictor = ONNXAutoModelClassifier(
+        model_path=os.path.join(ONNX_DIR, "interaction_model_onnx", "model.onnx"),
+        tokenizer_path=os.path.join(ONNX_DIR, "interaction_tokenizer_onnx"),
+        labels=['Technical_issue', 'Performance_feedback', 'Viewer_request', 'Reaction', 'Other']
+    )
+    print("✅ All ONNX models loaded successfully!")
 
-    # Gán nhãn ngẫu nhiên có trọng số (để dữ liệu thực tế hơn một chút)
-    df["interaction_type"] = [random.choices(interaction_opts, weights=[5, 15, 10, 40, 30])[0] for _ in range(total)]
-    df["emotion"] = [random.choices(emotion_opts, weights=[50, 20, 15, 15])[0] for _ in range(total)]
-    df["toxicity"] = [random.choices(toxic_opts, weights=[70, 15, 10, 5])[0] for _ in range(total)]
+except Exception as e:
+    print(f"🔥 Critical Error loading models: {e}")
+    traceback.print_exc()
+    sys.exit(1) 
 
-    # ==========================================
-    # 2. TÍNH TOÁN CÁC OPERATIONAL SIGNALS (S1 - S6)
-    # ==========================================
-    
-    # S1) Chat Load: Tổng tin nhắn / 60s (msg/s)
-    s1_chat_load = total / 60
-
-    # S2) Stream Tech Health: Tỉ lệ lỗi kỹ thuật trên tổng số message
-    tech_count = len(df[df["interaction_type"] == "Technical_issue"])
-    s2_tech_health = tech_count / total if total > 0 else 0
-
-    # S3) Viewer Demand Pressure: Tải lượng yêu cầu từ người xem / 60s
-    request_count = len(df[df["interaction_type"] == "Viewer_request"])
-    s3_demand_pressure = request_count / 60
-
-    # S4) Backseat / Criticism Pressure: Tỉ lệ chỉ trích cách chơi
-    criticism_count = len(df[df["interaction_type"] == "Performance_feedback"])
-    s4_backseat_pressure = criticism_count / total if total > 0 else 0
-
-    # S5) Toxic Attack Pressure: Tin nhắn tấn công (Aggressive/Severe) / 60s
-    toxic_attack_count = len(df[df["toxicity"].isin(["Aggressive_Toxic", "Severe_Toxic"])])
-    s5_toxic_pressure = toxic_attack_count / 60
-
-    # S6) Engagement Heat: Khoảnh khắc cao trào (Reaction HOẶC Excitement) / 60s
-    # Fix: Kết hợp cả Interaction Type là Reaction và Emotion là Excitement
-    engagement_count = len(df[(df["interaction_type"] == "Reaction") | (df["emotion"] == "Excitement")])
-    s6_engagement_heat = engagement_count / 60
-
-    # 3. ĐÓNG GÓI VÀ ĐẨY DỮ LIỆU LÊN REDIS
-    signals = {
-        "timestamp": datetime.now().strftime("%H:%M:%S"),
-        "total_messages": total,
-        "S1_Chat_Load": builtins.round(s1_chat_load, 4),
-        "S2_Tech_Health": builtins.round(s2_tech_health, 4),
-        "S3_Demand_Pressure": builtins.round(s3_demand_pressure, 4),
-        "S4_Backseat_Pressure": builtins.round(s4_backseat_pressure, 4),
-        "S5_Toxic_Pressure": builtins.round(s5_toxic_pressure, 4),
-        "S6_Engagement_Heat": builtins.round(s6_engagement_heat, 4)
-    }
-
-    # Lưu vào Redis để Dashboard Real-time có thể fetch
-    try:
-        redis_client.set("live_signals_streamer_01", json.dumps(signals))
-        print(f"✅ Batch {batch_id} processed. Signals updated in Redis.")
-        print(f"📊 {signals}")
-    except Exception as e:
-        print(f"❌ Error updating Redis: {e}")
-
-    # 4. LƯU XUỐNG POSTGRES (HISTORICAL ANALYSIS)
-    try:
-        # A) Lưu Raw Data + AI Labels (Bảng chi tiết)
-        enriched_df = spark.createDataFrame(df)
+# ==========================================
+# 2. PIPELINE CLASS
+# ==========================================
+class LiveSensePipeline:
+    def __init__(self, args):
+        self.args = args
+        self.topic = args.topic
         
-        enriched_df.write \
-            .format("jdbc") \
-            .option("url", "jdbc:postgresql://postgres:5432/metabaseappdb") \
-            .option("dbtable", "chat_history_analysis") \
-            .option("user", "phat") \
-            .option("password", "123456") \
-            .option("driver", "org.postgresql.Driver") \
-            .mode("append") \
-            .save()
+        print("⚙️  Initializing Spark Session...")
+        self.spark = SparkSession.builder \
+            .appName(f"LiveSense-Consumer-{self.topic}") \
+            .master("spark://spark-master:7077") \
+            .config("spark.jars.packages", "org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0,org.postgresql:postgresql:42.6.0") \
+            .config("spark.driver.extraJavaOptions", "-Duser.home=/home/spark") \
+            .config("spark.sql.shuffle.partitions", "4") \
+            .getOrCreate()
+        
+        self.spark.sparkContext.setLogLevel("WARN")
+        
+        self.redis_client = None
+        self._init_redis()
+
+        self.db_url = "jdbc:postgresql://postgres:5432/metabaseappdb"
+        self.db_props = {"user": "phat", "password": "123456", "driver": "org.postgresql.Driver"}
+
+    def _init_redis(self):
+        try:
+            self.redis_client = redis.Redis(host="redis", port=6379, db=0, decode_responses=True)
+            self.redis_client.ping()
+            print("✅ Connected to Redis successfully.")
+        except Exception as e:
+            print(f"⚠️  Redis connection failed: {e}")
+
+    def get_schema(self):
+        return StructType([
+            StructField("id", StringType()),
+            StructField("video_id", StringType()),
+            StructField("author", StringType()),
+            StructField("message", StringType()),
+            StructField("timestamp", TimestampType()),
+            StructField("platform", StringType())
+        ])
+
+    def enrich_data(self, df):
+        """
+        SỬ DỤNG MODEL THẬT ĐỂ DỰ ĐOÁN
+        """
+        if df.empty: return df
+        
+        messages = df["message"].astype(str).tolist()
+        
+        try:
+            df["toxicity"] = toxicity_predictor.predict(messages)
+
+            df["emotion"] = emotion_predictor.predict(messages)
             
-        # B) Lưu Signals theo thời gian (Bảng tổng hợp)
-        # Tạo DataFrame 1 dòng chứa các signal
-        signals_df = spark.createDataFrame([signals])
+            df["interaction_type"] = interaction_predictor.predict(messages)
+
+        except Exception as e:
+            print(f"⚠️ Inference Error: {e}")
+            traceback.print_exc()
+            df["toxicity"] = "Unknown"
+            df["emotion"] = "Neutral"
+            df["interaction_type"] = "Other"
+            
+        return df
+
+    def calculate_signals(self, df):
+        total = len(df)
+        if total == 0: return None
+
+        signals = {
+            "timestamp": datetime.now().strftime("%H:%M:%S"),
+            "total_messages": total,
+            "S1_Chat_Load": builtins.round(total / 60, 4),
+            "S2_Tech_Health": builtins.round(len(df[df["interaction_type"] == "Technical_issue"]) / total, 4),
+            "S3_Demand_Pressure": builtins.round(len(df[df["interaction_type"] == "Viewer_request"]) / 60, 4),
+            "S4_Backseat_Pressure": builtins.round(len(df[df["interaction_type"] == "Performance_feedback"]) / total, 4),
+            "S5_Toxic_Pressure": builtins.round(len(df[df["toxicity"].isin(["Aggressive_Toxic", "Severe_Toxic"])]) / 60, 4),
+            "S6_Engagement_Heat": builtins.round(len(df[(df["interaction_type"] == "Reaction") | (df["emotion"] == "Excitement")]) / 60, 4)
+        }
+        return signals
+
+    def save_to_redis(self, signals, batch_id):
+        if not self.redis_client or not signals: return
+        try:
+            redis_key = f"live_signals_{self.topic}"
+            self.redis_client.set(redis_key, json.dumps(signals))
+            print(f"✅ Batch {batch_id}: Redis updated.")
+        except Exception as e:
+            print(f"❌ Redis Error: {e}")
+
+    def save_to_postgres(self, pandas_df, signals, batch_id):
+        try:
+            spark_df = self.spark.createDataFrame(pandas_df)
+
+            final_df = spark_df.select(
+                col("id"), 
+                "video_id", "author", "message", 
+                "timestamp", "platform", "emotion", 
+                "toxicity", "interaction_type"
+            )
+            
+            final_df.write.jdbc(
+                url=self.db_url, table="chat_history_analysis", 
+                mode="append", properties=self.db_props
+            )
+            
+            if signals:
+                signals_df = self.spark.createDataFrame([signals])
+                signals_df.write.jdbc(
+                    url=self.db_url, table="stream_signals_history", 
+                    mode="append", properties=self.db_props
+                )
+            print(f"💾 Batch {batch_id}: Saved to Postgres.")
+        except Exception as e:
+            print(f"❌ Postgres Error: {e}")
+
+    def process_batch_driver(self, batch_df, batch_id):
+        if batch_df.isEmpty(): return
+        print(f"\n--- Processing Batch {batch_id} ---")
+        try:
+            pdf = batch_df.toPandas()
+            pdf = self.enrich_data(pdf)  
+            signals = self.calculate_signals(pdf)
+            self.save_to_redis(signals, batch_id)
+            self.save_to_postgres(pdf, signals, batch_id)
+        except Exception as e:
+            print(f"🔥 Critical Error in Batch {batch_id}: {e}")
+            traceback.print_exc()
+
+    def run(self):
+        print(f"🚀 Starting Stream for Topic: {self.topic}")
+        raw_stream = self.spark.readStream \
+            .format("kafka") \
+            .option("kafka.bootstrap.servers", self.args.kafka_servers) \
+            .option("subscribe", self.topic) \
+            .option("maxOffsetsPerTrigger", 16) \
+            .option("startingOffsets", "earliest") \
+            .option("failOnDataLoss", "false") \
+            .load()
+
+        parsed_stream = raw_stream.selectExpr("CAST(value as STRING)") \
+            .select(from_json(col("value"), self.get_schema()).alias("data")) \
+            .select("data.*")
+
+        checkpoint_path = f"{self.args.checkpoint_dir}/{self.topic}"
         
-        signals_df.write \
-            .format("jdbc") \
-            .option("url", "jdbc:postgresql://postgres:5432/metabaseappdb") \
-            .option("dbtable", "stream_signals_history") \
-            .option("user", "phat") \
-            .option("password", "123456") \
-            .option("driver", "org.postgresql.Driver") \
-            .mode("append") \
-            .save()
+        query = parsed_stream.writeStream \
+            .foreachBatch(self.process_batch_driver) \
+            .trigger(processingTime="2 seconds") \
+            .option("checkpointLocation", checkpoint_path) \
+            .start()
 
-        print(f"💾 Batch {batch_id} saved to Postgres (Tables: chat_history_analysis & stream_signals_history).")
-    except Exception as e:
-        print(f"❌ Error saving to Postgres: {e}")
+        print(f"🌊 Stream is Active. Checkpoint: {checkpoint_path}")
+        try:
+            query.awaitTermination()
+        except KeyboardInterrupt:
+            query.stop()
 
+def get_args():
+    parser = argparse.ArgumentParser(description="LiveSense Class-based Consumer")
+    parser.add_argument("--topic", required=True, help="Kafka topic name")
+    parser.add_argument("--checkpoint-dir", default="/tmp/spark-checkpoints", help="Checkpoint root dir")
+    parser.add_argument("--kafka_servers", default="kafka:29092", help="Kafka bootstrap servers")
+    return parser.parse_args()  
 
-raw_stream = spark.readStream \
-    .format("kafka") \
-    .option("kafka.bootstrap.servers", "kafka:29092") \
-    .option("subscribe", "live_chat_laibang") \
-    .option("startingOffsets", "latest") \
-    .load()
-
-chat_df = raw_stream.selectExpr("CAST(value as STRING)") \
-          .select(from_json(col("value"), chat_schema).alias("data")) \
-          .select("data.*")
-
-query = chat_df.writeStream \
-    .foreachBatch(process_batch) \
-    .trigger(processingTime="0.5 seconds") \
-    .option("checkpointLocation", "/tmp/spark-checkpoints") \
-    .start()
-
-print("🚀 Spark Streaming is running inside Docker...")
-query.awaitTermination()
+if __name__ == "__main__":
+    args = get_args()
+    pipeline = LiveSensePipeline(args)
+    pipeline.run()

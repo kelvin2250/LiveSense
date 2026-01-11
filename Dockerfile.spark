@@ -1,18 +1,31 @@
-FROM apache/spark:latest
+FROM apache/spark:3.5.0
 USER root
 
-# Tạo home hợp lệ cho Spark
+# 1. Tạo home và phân quyền
 ENV HOME=/home/spark
-RUN mkdir -p /home/spark/.ivy2 && \
-    chown -R 185:185 /home/spark
+RUN mkdir -p /home/spark/.ivy2 && chown -R 185:185 /home/spark
 
-# Cài thư viện Python cần thiết
-RUN apt-get update && apt-get install -y python3 python3-pip && \
-    pip3 install --no-cache-dir \
-        pyspark \
-        redis \
-        pandas \
-        kafka-python
+# 2. Cài đặt các thư viện hệ thống cần thiết (nếu onnx cần build)
+RUN apt-get update && apt-get install -y \
+    python3 python3-pip \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# 3. Cài đặt thư viện Python cho AI & Spark
+# Lưu ý: Cài đúng version để tránh xung đột
+RUN pip3 install --no-cache-dir \
+    pyspark \
+    redis \
+    pandas \
+    kafka-python \
+    numpy \
+    onnxruntime \
+    transformers \
+    scipy
+
+RUN pip3 install --no-cache-dir \
+    torch --index-url https://download.pytorch.org/whl/cpu
+
 
 USER 185
 WORKDIR /app

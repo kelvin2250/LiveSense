@@ -22,7 +22,7 @@ services:
     environment:
       HOME: /home/spark
   # 1. Kafka using kraft mode
-  kafka:
+  kafka-service:
     image: confluentinc/cp-kafka:7.8.3
     container_name: kafka
     ports:
@@ -52,7 +52,7 @@ services:
 
     volumes:
       - kafka_kraft:/var/lib/kafka/data
-  
+
   # 2. DATABASE & VISUALIZATION
   postgres:
     image: postgres:15
@@ -87,7 +87,7 @@ services:
       MB_DB_HOST: postgres
     depends_on:
       - postgres
-      
+
 volumes:
   mongo_data:
   postgres_data:

@@ -21,20 +21,41 @@
 Hệ thống được xây dựng theo mô hình **Lambda Architecture** thu nhỏ, đảm bảo cả tốc độ xử lý thời gian thực và khả năng lưu trữ lâu dài.
 
 ```mermaid
-graph LR
-    A[Data Emulator] -->|Producer| B(Kafka Broker)
-    B -->|Subscribe| C{Spark Streaming}
-    
-    subgraph "Processing Core (Docker)"
-    C -->|Mock AI Labeling| C
-    C -->|Calculate Signals| C
+graph TD
+    subgraph HOST_MACHINE [Máy tính của bạn]
+        Producer_Script[Python Producer Script]
+        Browser[Trình duyệt Web]
     end
-    
-    C -->|Hot Path (Real-time)| D[(Redis)]
-    C -->|Cold Path (History)| E[(PostgreSQL)]
-    
-    D -->|Fetch < 1s| F[Streamlit Dashboard]
-    E -->|Query| G[Metabase Analytics]
+
+    subgraph DOCKER_NETWORK [Mạng nội bộ Docker]
+        direction TB
+        
+        Kafka[Kafka Service]
+        SparkM[Spark Master]
+        SparkW[Spark Worker]
+        Postgres[(Postgres DB)]
+        Redis[(Redis Cache)]
+        Metabase[Metabase UI]
+
+        %% Kafka Connections
+        Producer_Script -- "localhost:9092" --> Kafka
+        SparkW -- "kafka:29092" --> Kafka
+
+        %% Spark Internal
+        SparkW -- "spark-master:7077" --> SparkM
+        
+        %% Spark Outputs
+        SparkW -- "Port 5432" --> Postgres
+        SparkW -- "Port 6379" --> Redis
+
+        %% Metabase Connections
+        Metabase -- "Lưu config (Port 5432)" --> Postgres
+        Metabase -- "Đọc dữ liệu hiển thị" --> Postgres
+    end
+
+    %% Web UI Access
+    Browser -- "localhost:8080" --> SparkM
+    Browser -- "localhost:3000" --> Metabase
 ```
 
 ### 🛠️ Tech Stack:
