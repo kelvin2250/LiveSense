@@ -26,7 +26,7 @@
 các tables : chat_history_analysis , stream_signals_history
 
 
-run producer : python producer2.py --video_id VIDEO_ID (8Buyp1C860A) --topic topic_name (live_chat_himas)
+run producer : python producer.py --video_id VIDEO_ID (8Buyp1C860A) --topic topic_name (live_chat_himas)
 
 run consumer : docker exec -it spark-master /opt/spark/bin/spark-submit `
   --master spark://spark-master:7077 `
