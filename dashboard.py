@@ -12,6 +12,12 @@ st.set_page_config(
     layout="wide"
 )
 
+# Mặc định là 5 giây như bạn yêu cầu
+refresh_rate = st.sidebar.slider("⏱️ Refresh Rate (seconds)", min_value=1, max_value=60, value=5)
+
+input_topic = st.sidebar.text_input("Kafka Topic Name", value="live_chat_midfeed")
+redis_key = f"live_signals_{input_topic}"
+
 # 2. Sidebar - Threshold Settings
 st.sidebar.title("⚙️ Threshold Settings")
 st.sidebar.markdown("Điều chỉnh ngưỡng cảnh báo cho các chỉ số.")
@@ -60,7 +66,7 @@ if 'df_history' not in st.session_state:
 
 def update_dashboard():
     # Lấy dữ liệu từ Redis (Key phải khớp với consumer.py)
-    raw_data = redis_client.get("live_signals_streamer_01")
+    raw_data = redis_client.get(redis_key)
     
     if raw_data:
         data = json.loads(raw_data)
@@ -145,4 +151,4 @@ def update_dashboard():
 # Auto-refresh loop
 while True:
     update_dashboard()
-    time.sleep(1) # Cập nhật mỗi 1 giây
+    time.sleep(refresh_rate) # Cập nhật mỗi 1 giây

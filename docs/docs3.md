@@ -38,4 +38,4 @@ run consumer : docker exec -it spark-master /opt/spark/bin/spark-submit `
 example: 
         -python producer.py --video_id MGV5PJuhgvc --topic live_chat_rambo
 
-        -python producer2.py --video_id  8Buyp1C860A --topic  live_chat_himas
+        -python producer.py --video_id  GBT29EkDjNQ --topic  live_chat_midfeed
