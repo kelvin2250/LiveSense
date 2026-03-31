@@ -292,8 +292,8 @@ def demo():
     print("="*60)
 
     interaction_predictor = ONNXAutoModelClassifier(
-        model_path=os.path.join(ONNX_DIR, "interaction_model_onnx\model.onnx"),
-        tokenizer_path=os.path.join(ONNX_DIR, "interaction_tokenizer_onnx"),
+        model_path=os.path.join(ONNX_DIR, "interaction_model_onnx", "model.onnx"),
+        tokenizer_path=os.path.join(ONNX_DIR, "interaction_model_onnx"),
         labels=['technical_issue',
                     'performance_feedback',
                     'viewer_request',

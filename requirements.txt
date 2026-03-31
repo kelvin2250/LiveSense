@@ -1,0 +1,14 @@
+google-api-python-client
+kafka-python
+numpy
+onnxruntime
+optimum[onnxruntime]
+pandas
+python-dotenv
+pyspark
+redis
+scipy
+streamlit
+torch
+transformers
+yt-dlp

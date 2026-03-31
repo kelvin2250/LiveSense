@@ -21,8 +21,10 @@ except ImportError as e:
 # ==========================================
 # 1. GLOBAL MODEL INITIALIZATION (LOAD ONCE)
 # ==========================================
-# Lưu ý: Đường dẫn này là đường dẫn LINUX trong Docker
-ONNX_DIR = "/app/onnx_models"
+# Auto-detect ONNX directory for both Docker and local Windows/Linux runs.
+DOCKER_ONNX_DIR = "/app/onnx_models"
+LOCAL_ONNX_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "onnx_models")
+ONNX_DIR = DOCKER_ONNX_DIR if os.path.isdir(DOCKER_ONNX_DIR) else LOCAL_ONNX_DIR
 
 print("🧠 Loading ONNX Models...")
 try:
@@ -40,7 +42,7 @@ try:
 
     interaction_predictor = ONNXAutoModelClassifier(
         model_path=os.path.join(ONNX_DIR, "interaction_model_onnx", "model.onnx"),
-        tokenizer_path=os.path.join(ONNX_DIR, "interaction_tokenizer_onnx"),
+        tokenizer_path=os.path.join(ONNX_DIR, "interaction_model_onnx"),
         labels=['Technical_issue', 'Performance_feedback', 'Viewer_request', 'Reaction', 'Other']
     )
     print("✅ All ONNX models loaded successfully!")
@@ -77,7 +79,12 @@ class LiveSensePipeline:
 
     def _init_redis(self):
         try:
-            self.redis_client = redis.Redis(host="redis", port=6379, db=0, decode_responses=True)
+            self.redis_client = redis.Redis(
+                host=self.args.redis_host,
+                port=self.args.redis_port,
+                db=0,
+                decode_responses=True
+            )
             self.redis_client.ping()
             print("✅ Connected to Redis successfully.")
         except Exception as e:
@@ -214,7 +221,14 @@ def get_args():
     parser = argparse.ArgumentParser(description="LiveSense Class-based Consumer")
     parser.add_argument("--topic", required=True, help="Kafka topic name")
     parser.add_argument("--checkpoint-dir", default="/tmp/spark-checkpoints", help="Checkpoint root dir")
-    parser.add_argument("--kafka_servers", default="kafka:29092", help="Kafka bootstrap servers")
+    parser.add_argument(
+        "--kafka_servers", "--kafka-broker",
+        dest="kafka_servers",
+        default="kafka:29092",
+        help="Kafka bootstrap servers"
+    )
+    parser.add_argument("--redis-host", default="redis", help="Redis host")
+    parser.add_argument("--redis-port", type=int, default=6379, help="Redis port")
     return parser.parse_args()  
 
 if __name__ == "__main__":

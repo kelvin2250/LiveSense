@@ -1,10 +1,16 @@
 # ⚡ LiveSense QoE: Real-time Livestream Analytics & AI Moderation System
 
-> **"Turning Chaos into Insights"** - Hệ thống phân tích thời gian thực giúp Streamer và Moderator thấu hiểu khán giả, phát hiện toxic và nắm bắt khoảnh khắc viral ngay lập tức.
+[![Python 3.9+](https://img.shields.io/badge/Python-3.9+-blue.svg)](https://www.python.org/)
+[![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
+[![Apache Spark](https://img.shields.io/badge/Apache-Spark-E25E2E?logo=apachespark&logoColor=white)](https://spark.apache.org/)
+[![Kafka](https://img.shields.io/badge/Apache-Kafka-231F20?logo=apachekafka&logoColor=white)](https://kafka.apache.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
+> **"Turning Chaos into Insights"** — Hệ thống phân tích thời gian thực giúp Streamer và Moderator thấu hiểu khán giả, phát hiện toxic và nắm bắt khoảnh khắc viral ngay lập tức.
 
 ---
 
-## 📖 1. Tổng quan dự án (Project Overview)
+## 📖 Tổng quan dự án (Project Overview)
 
 **LiveSense QoE** (Quality of Experience) là một giải pháp MLOps toàn diện được thiết kế để giải quyết bài toán quá tải thông tin trong các buổi livestream quy mô lớn. Thay vì để Streamer bị "trôi chat" hoặc Moderator phải căng mắt đọc từng dòng tin nhắn, hệ thống tự động thu thập, phân tích và chuyển đổi hàng ngàn tin nhắn mỗi giây thành các **Tín hiệu vận hành (Operational Signals)** trực quan.
 
@@ -58,15 +64,18 @@ graph TD
     Browser -- "localhost:3000" --> Metabase
 ```
 
-### 🛠️ Tech Stack:
-*   **Ingestion:** Apache Kafka (KRaft mode) - Message Broker chịu tải cao.
-*   **Processing:** Apache Spark Structured Streaming (Pyspark) - Xử lý luồng dữ liệu phân tán.
-*   **Storage (Hot):** Redis - In-memory database cho Dashboard thời gian thực.
-*   **Storage (Cold):** PostgreSQL - Relational database cho phân tích lịch sử.
-*   **Visualization:**
-    *   **Streamlit:** Real-time Operational Dashboard.
-    *   **Metabase:** Business Intelligence (BI) & Deep Analytics.
-*   **Infrastructure:** Docker & Docker Compose.
+### 🛠️ Tech Stack
+
+| Layer | Technology | Purpose |
+|-------|-----------|---------|
+| **Ingestion** | Apache Kafka (KRaft mode) | Event streaming & message broker |
+| **Processing** | Apache Spark 3.5+ (Structured Streaming) | Distributed stream processing with ML integration |
+| **ML/AI** | ONNX Runtime, Transformers | Real-time toxicity & emotion classification |
+| **Storage (Hot)** | Redis | In-memory cache for real-time dashboard |
+| **Storage (Cold)** | PostgreSQL | Time-series data & historical analytics |
+| **Visualization** | Streamlit, Metabase | Real-time dashboard & BI analytics |
+| **Infrastructure** | Docker Compose | Containerized microservices orchestration |
+| **Runtime** | Python 3.9+, PySpark | Data pipeline, transformations & ML inference |
 
 ---
 
@@ -85,7 +94,14 @@ graph TD
 
 ---
 
-## 🚀 4. Hướng dẫn cài đặt & Chạy (Installation & Usage)
+## � Documentation
+
+- **[QUICK_START.md](QUICK_START.md)** — Step-by-step setup guide for Windows
+- **[ARCHITECTURE.md](ARCHITECTURE.md)** — Deep dive: System design, Kafka/Spark configuration, data flow
+
+---
+
+## 🚀 Installation & Usage
 
 ### Yêu cầu tiên quyết (Prerequisites):
 *   Docker & Docker Compose
