@@ -24,45 +24,15 @@
 
 ## 🏗️ 2. Kiến trúc hệ thống (System Architecture)
 
-Hệ thống được xây dựng theo mô hình **Lambda Architecture** thu nhỏ, đảm bảo cả tốc độ xử lý thời gian thực và khả năng lưu trữ lâu dài.
+![LiveSense System Architecture](img/architecture.png)
 
-```mermaid
-graph TD
-    subgraph HOST_MACHINE [Máy tính của bạn]
-        Producer_Script[Python Producer Script]
-        Browser[Trình duyệt Web]
-    end
+*Sơ đồ kiến trúc tổng thể luồng dữ liệu: Producer -> Kafka -> Spark Streaming -> Redis/PostgreSQL -> Dashboard/Metabase.*
 
-    subgraph DOCKER_NETWORK [Mạng nội bộ Docker]
-        direction TB
-        
-        Kafka[Kafka Service]
-        SparkM[Spark Master]
-        SparkW[Spark Worker]
-        Postgres[(Postgres DB)]
-        Redis[(Redis Cache)]
-        Metabase[Metabase UI]
+### 📺 Dashboard Preview
 
-        %% Kafka Connections
-        Producer_Script -- "localhost:9092" --> Kafka
-        SparkW -- "kafka:29092" --> Kafka
+![LiveSense Dashboard](img/dashboard.png)
 
-        %% Spark Internal
-        SparkW -- "spark-master:7077" --> SparkM
-        
-        %% Spark Outputs
-        SparkW -- "Port 5432" --> Postgres
-        SparkW -- "Port 6379" --> Redis
-
-        %% Metabase Connections
-        Metabase -- "Lưu config (Port 5432)" --> Postgres
-        Metabase -- "Đọc dữ liệu hiển thị" --> Postgres
-    end
-
-    %% Web UI Access
-    Browser -- "localhost:8080" --> SparkM
-    Browser -- "localhost:3000" --> Metabase
-```
+*Giao diện giám sát real-time 6 tín hiệu vận hành từ Redis và Spark Streaming.*
 
 ### 🛠️ Tech Stack
 
@@ -94,10 +64,10 @@ graph TD
 
 ---
 
-## � Documentation
+## 📚 Documentation
 
-- **[QUICK_START.md](QUICK_START.md)** — Step-by-step setup guide for Windows
-- **[ARCHITECTURE.md](ARCHITECTURE.md)** — Deep dive: System design, Kafka/Spark configuration, data flow
+- Tài liệu chi tiết dự án: [docs/SE363_Q11.pdf](docs/SE363_Q11.pdf)
+- Kiến trúc hệ thống: [ARCHITECTURE.md](ARCHITECTURE.md)
 
 ---
 
@@ -113,6 +83,7 @@ Dựng toàn bộ các services (Spark, Kafka, Redis, Postgres, Metabase) bằng
 
 ```bash
 # Tại thư mục gốc dự án
+copy .env.example .env
 docker-compose up -d
 ```
 *Chờ khoảng 30s - 1 phút để các container khởi động hoàn toàn.*
@@ -129,7 +100,7 @@ pip install kafka-python pandas streamlit redis
 **1. Khởi chạy Spark Consumer (Bộ não xử lý):**
 Consumer sẽ lắng nghe Kafka, xử lý dữ liệu và đẩy vào Redis/Postgres.
 ```bash
-docker exec -it spark-master python3 /app/consumer.py
+docker exec -it spark-master python3 /app/consumer.py --topic test --trigger-seconds 2
 ```
 
 **2. Khởi chạy Streamlit Dashboard (Màn hình theo dõi):**
@@ -142,51 +113,11 @@ streamlit run dashboard.py
 **3. Bắt đầu giả lập dữ liệu (Data Generator):**
 Mở một terminal mới để bắn dữ liệu giả lập vào hệ thống:
 ```bash
-python producer.py
+python producer.py --video_id <youtube_url_or_id> --topic test --server localhost:9092
 ```
 
----
-
-## 📈 5. Phân tích sâu với Metabase (Deep Analytics)
-
-Sau khi hệ thống chạy xong, dữ liệu lịch sử được lưu tại PostgreSQL. Bạn có thể dùng Metabase để trả lời các câu hỏi vĩ mô:
-
-1.  Truy cập: `http://localhost:3000`
-2.  Setup tài khoản Admin (lần đầu).
-3.  Kết nối Database:
-    *   **Host:** `postgres`
-    *   **DB Name:** `metabaseappdb`
-    *   **User:** `phat` / **Pass:** `123456`
-4.  **Gợi ý biểu đồ:**
-    *   *Line Chart:* Xu hướng Toxic (S5) trong suốt 2 tiếng livestream.
-    *   *Pie Chart:* Tỉ lệ cảm xúc khán giả (Vui vẻ vs. Giận dữ).
-    *   *Table:* Danh sách top những user có hành vi toxic nhất.
+Lưu ý: Kafka topic ở Producer, Consumer và Dashboard phải giống nhau (ví dụ `test`).
 
 ---
 
-## 📂 6. Cấu trúc dự án (Project Structure)
 
-```
-LiveSense-QoE/
-├── data/                   # Dữ liệu giả lập (CSV)
-│   └── emulator/
-│       └── laibang.csv     # Log chat mẫu
-├── consumer.py             # [Core] Spark Streaming logic, AI simulation, Sink to Redis/DB
-├── producer.py             # [Source] Giả lập gửi tin nhắn vào Kafka
-├── dashboard.py            # [UI] Streamlit Dashboard hiển thị Real-time
-├── docker-compose.yml      # [Infra] Định nghĩa toàn bộ hạ tầng Docker
-├── Dockerfile.spark        # [Infra] Custom Image cho Spark (cài thêm thư viện)
-└── README.md               # Tài liệu dự án
-```
-
----
-
-## 🔮 7. Định hướng phát triển (Future Roadmap)
-
-*   **Phase 1 (Hiện tại):** Hoàn thiện luồng dữ liệu (Pipeline) và Dashboard cơ bản với Mock AI.
-*   **Phase 2:** Tích hợp **Model AI thật** (BERT/RoBERTa) để thay thế module random hiện tại.
-*   **Phase 3:** Xây dựng tính năng **Auto-Mod** (Tự động ẩn comment toxic trên nền tảng stream thông qua API).
-*   **Phase 4:** Triển khai lên Cloud (AWS/GCP) với Kubernetes để chịu tải hàng triệu users.
-
----
-*Project by [Your Name] - MLOps Course Final Project*

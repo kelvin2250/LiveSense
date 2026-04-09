@@ -1,17 +1,3 @@
-"""
-ONNX Inference Wrapper for SetFit Models
-Provides a simple interface for running inference with ONNX-converted SetFit models.
-
-Usage:
-    predictor = ONNXSetFitPredictor(
-        encoder_path="path/to/encoder_onnx",
-        classifier_path="path/to/classifier.onnx",
-        labels_path="path/to/labels.txt"
-    )
-    
-    predictions = predictor.predict(["text1", "text2", "text3"])
-"""
-# pip install 'optimum[onnxruntime]' transformers onnxruntime 
 import os
 import numpy as np
 import onnxruntime as ort
@@ -20,10 +6,15 @@ from typing import List, Union
 import torch 
 
 class ONNXPredictor:
-    def __init__(self, encoder_path: str, classifier_path: str, labels_path: str):
-        pass
     def predict(self, texts: Union[str, List[str]]) -> Union[str, List[str]]:
-        pass
+        raise NotImplementedError
+
+
+def _select_providers() -> list:
+    available = set(ort.get_available_providers())
+    if "CUDAExecutionProvider" in available:
+        return [("CUDAExecutionProvider", {"device_id": 0}), "CPUExecutionProvider"]
+    return ["CPUExecutionProvider"]
 
 class ONNXAutoModelClassifier:
     def __init__(self, model_path: str , tokenizer_path : str, labels : list):
@@ -36,7 +27,7 @@ class ONNXAutoModelClassifier:
         self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_path)
         self.session = ort.InferenceSession(
             model_path,
-            providers=[("CUDAExecutionProvider", {"device_id": 0}), "CPUExecutionProvider"]
+            providers=_select_providers()
         )
         self.labels = labels
 
@@ -60,6 +51,7 @@ class ONNXAutoModelClassifier:
             texts,
             padding=True,
             truncation=True,
+            max_length=512,
             return_tensors="np"
         )
 
@@ -102,13 +94,13 @@ class ONNXSetFitPredictor(ONNXPredictor):
         encoder_model_path = os.path.join(encoder_path, "model.onnx")
         self.encoder_session = ort.InferenceSession(
             encoder_model_path,
-            providers= [("CUDAExecutionProvider", {"device_id": 0}), "CPUExecutionProvider" ]
+            providers=_select_providers()
         )
         
         # Load ONNX classifier
         self.classifier_session = ort.InferenceSession(
             classifier_path,
-            providers=[("CUDAExecutionProvider", {"device_id": 0}), "CPUExecutionProvider"]
+            providers=_select_providers()
         )
         
         # Load labels
@@ -189,8 +181,7 @@ class ONNXSetFitPredictor(ONNXPredictor):
         classifier_outputs = self.classifier_session.run(None, classifier_inputs)
         pred_indices = classifier_outputs[0]  
 
-        # Lỗi : str type ( đéo hiểu)
-        # print(pred_indices)
+        # Some exported sklearn classifiers already output string labels.
         if isinstance(pred_indices[0], str):
            predictions = pred_indices
 
@@ -264,7 +255,7 @@ def demo():
     """Demo usage of the ONNX predictor"""
     
     # Example configuration
-    ONNX_DIR = r"D:\Projects\Assignment\LiveSense\onnx_models"
+    ONNX_DIR = r"onnx_models/"
     
     # Initialize toxicity predictor
     print("\n" + "="*60)
@@ -304,14 +295,14 @@ def demo():
     
     # Test predictions
     test_texts = [
-    "ngu vcl chè ơi",
-    "Hi e chè",
-    "m muốn lấy chợ lớn ????",
-    "đánh ngu c",
-    "ăn lol gì mà ngu vậy",
-    "đần",
-    "chết mẹ đi cho rồi",
-    "dốt ác :))"
+    "stream bi lag qua",
+    "cho xin lai bai nhac vua roi",
+    "camera bi mo",
+    "hom nay stream vui qua",
+    "am thanh bi nho",
+    "cam on moi nguoi da xem",
+    "cho xin ten game dang choi",
+    "chat dang rat soi dong"
     ]
     
     print("\n" + "="*60)
@@ -332,4 +323,4 @@ def demo():
 if __name__ == "__main__":
     demo()
 
-# python onnx_inference.py
+

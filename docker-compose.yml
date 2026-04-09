@@ -60,9 +60,9 @@ services:
     ports:
       - "5432:5432"
     environment:
-      POSTGRES_USER: phat
-      POSTGRES_DB: metabaseappdb
-      POSTGRES_PASSWORD: 123456
+      POSTGRES_USER: ${POSTGRES_USER:-phat}
+      POSTGRES_DB: ${POSTGRES_DB:-metabaseappdb}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-123456}
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
@@ -80,11 +80,11 @@ services:
       - "3000:3000"
     environment:
       MB_DB_TYPE: postgres
-      MB_DB_DBNAME: metabaseappdb
-      MB_DB_PORT: 5432
-      MB_DB_USER: phat
-      MB_DB_PASS: 123456
-      MB_DB_HOST: postgres
+      MB_DB_DBNAME: ${POSTGRES_DB:-metabaseappdb}
+      MB_DB_PORT: ${POSTGRES_PORT:-5432}
+      MB_DB_USER: ${POSTGRES_USER:-phat}
+      MB_DB_PASS: ${POSTGRES_PASSWORD:-123456}
+      MB_DB_HOST: ${POSTGRES_HOST:-postgres}
     depends_on:
       - postgres
 

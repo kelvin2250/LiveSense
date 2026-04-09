@@ -8,8 +8,15 @@ import os
 import pandas as pd
 from datetime import datetime
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import *
-from pyspark.sql.types import *
+from pyspark.sql.functions import col, from_json
+from pyspark.sql.types import (
+    DoubleType,
+    IntegerType,
+    StringType,
+    StructField,
+    StructType,
+    TimestampType,
+)
 
 try:
     from onnx_inference import ONNXSetFitPredictor, ONNXAutoModelClassifier
@@ -43,7 +50,7 @@ try:
     interaction_predictor = ONNXAutoModelClassifier(
         model_path=os.path.join(ONNX_DIR, "interaction_model_onnx", "model.onnx"),
         tokenizer_path=os.path.join(ONNX_DIR, "interaction_model_onnx"),
-        labels=['Technical_issue', 'Performance_feedback', 'Viewer_request', 'Reaction', 'Other']
+        labels=['technical_issue', 'performance_feedback', 'viewer_request', 'reaction', 'other']
     )
     print("✅ All ONNX models loaded successfully!")
 
@@ -74,8 +81,14 @@ class LiveSensePipeline:
         self.redis_client = None
         self._init_redis()
 
-        self.db_url = "jdbc:postgresql://postgres:5432/metabaseappdb"
-        self.db_props = {"user": "phat", "password": "123456", "driver": "org.postgresql.Driver"}
+        db_host = os.getenv("POSTGRES_HOST", "postgres")
+        db_port = os.getenv("POSTGRES_PORT", "5432")
+        db_name = os.getenv("POSTGRES_DB", "metabaseappdb")
+        db_user = os.getenv("POSTGRES_USER", "phat")
+        db_password = os.getenv("POSTGRES_PASSWORD", "123456")
+
+        self.db_url = f"jdbc:postgresql://{db_host}:{db_port}/{db_name}"
+        self.db_props = {"user": db_user, "password": db_password, "driver": "org.postgresql.Driver"}
 
     def _init_redis(self):
         try:
@@ -101,26 +114,26 @@ class LiveSensePipeline:
         ])
 
     def enrich_data(self, df):
-        """
-        SỬ DỤNG MODEL THẬT ĐỂ DỰ ĐOÁN
-        """
         if df.empty: return df
         
         messages = df["message"].astype(str).tolist()
         
         try:
             df["toxicity"] = toxicity_predictor.predict(messages)
-
             df["emotion"] = emotion_predictor.predict(messages)
-            
             df["interaction_type"] = interaction_predictor.predict(messages)
+
+            # Normalize labels to avoid case-mismatch in signal calculations.
+            df["toxicity"] = df["toxicity"].astype(str).str.strip().str.lower()
+            df["emotion"] = df["emotion"].astype(str).str.strip().str.lower()
+            df["interaction_type"] = df["interaction_type"].astype(str).str.strip().str.lower()
 
         except Exception as e:
             print(f"⚠️ Inference Error: {e}")
             traceback.print_exc()
-            df["toxicity"] = "Unknown"
-            df["emotion"] = "Neutral"
-            df["interaction_type"] = "Other"
+            df["toxicity"] = "unknown"
+            df["emotion"] = "neutral"
+            df["interaction_type"] = "other"
             
         return df
 
@@ -128,15 +141,18 @@ class LiveSensePipeline:
         total = len(df)
         if total == 0: return None
 
+        window_seconds = builtins.max(int(self.args.trigger_seconds), 1)
+        to_per_minute = 60.0 / window_seconds
+
         signals = {
             "timestamp": datetime.now().strftime("%H:%M:%S"),
             "total_messages": total,
-            "S1_Chat_Load": builtins.round(total / 60, 4),
-            "S2_Tech_Health": builtins.round(len(df[df["interaction_type"] == "Technical_issue"]) / total, 4),
-            "S3_Demand_Pressure": builtins.round(len(df[df["interaction_type"] == "Viewer_request"]) / 60, 4),
-            "S4_Backseat_Pressure": builtins.round(len(df[df["interaction_type"] == "Performance_feedback"]) / total, 4),
-            "S5_Toxic_Pressure": builtins.round(len(df[df["toxicity"].isin(["Aggressive_Toxic", "Severe_Toxic"])]) / 60, 4),
-            "S6_Engagement_Heat": builtins.round(len(df[(df["interaction_type"] == "Reaction") | (df["emotion"] == "Excitement")]) / 60, 4)
+            "S1_Chat_Load": builtins.round(total * to_per_minute, 4),
+            "S2_Tech_Health": builtins.round(len(df[df["interaction_type"] == "technical_issue"]) / total, 4),
+            "S3_Demand_Pressure": builtins.round(len(df[df["interaction_type"] == "viewer_request"]) * to_per_minute, 4),
+            "S4_Backseat_Pressure": builtins.round(len(df[df["interaction_type"] == "performance_feedback"]) / total, 4),
+            "S5_Toxic_Pressure": builtins.round(len(df[df["toxicity"].isin(["aggressive_toxic", "severe_toxic"])]) * to_per_minute, 4),
+            "S6_Engagement_Heat": builtins.round(len(df[(df["interaction_type"] == "reaction") | (df["emotion"] == "excitement")]) * to_per_minute, 4)
         }
         return signals
 
@@ -151,7 +167,20 @@ class LiveSensePipeline:
 
     def save_to_postgres(self, pandas_df, signals, batch_id):
         try:
-            spark_df = self.spark.createDataFrame(pandas_df)
+            # Explicitly define schema for chat history
+            chat_schema = StructType([
+                StructField("id", StringType()),
+                StructField("video_id", StringType()),
+                StructField("author", StringType()),
+                StructField("message", StringType()),
+                StructField("timestamp", TimestampType()),
+                StructField("platform", StringType()),
+                StructField("toxicity", StringType()),
+                StructField("emotion", StringType()),
+                StructField("interaction_type", StringType())
+            ])
+            
+            spark_df = self.spark.createDataFrame(pandas_df, schema=chat_schema)
 
             final_df = spark_df.select(
                 col("id"), 
@@ -166,7 +195,18 @@ class LiveSensePipeline:
             )
             
             if signals:
-                signals_df = self.spark.createDataFrame([signals])
+                # Define schema for signals
+                signals_schema = StructType([
+                    StructField("timestamp", StringType()),
+                    StructField("total_messages", IntegerType()),
+                    StructField("S1_Chat_Load", DoubleType()),
+                    StructField("S2_Tech_Health", DoubleType()),
+                    StructField("S3_Demand_Pressure", DoubleType()),
+                    StructField("S4_Backseat_Pressure", DoubleType()),
+                    StructField("S5_Toxic_Pressure", DoubleType()),
+                    StructField("S6_Engagement_Heat", DoubleType())
+                ])
+                signals_df = self.spark.createDataFrame([signals], schema=signals_schema)
                 signals_df.write.jdbc(
                     url=self.db_url, table="stream_signals_history", 
                     mode="append", properties=self.db_props
@@ -182,6 +222,7 @@ class LiveSensePipeline:
             pdf = batch_df.toPandas()
             pdf = self.enrich_data(pdf)  
             signals = self.calculate_signals(pdf)
+            # Save signals to Redis first for real-time dashboard updates, then save full data to Postgres.
             self.save_to_redis(signals, batch_id)
             self.save_to_postgres(pdf, signals, batch_id)
         except Exception as e:
@@ -190,6 +231,7 @@ class LiveSensePipeline:
 
     def run(self):
         print(f"🚀 Starting Stream for Topic: {self.topic}")
+        # Read from Kafka with optimized settings for low-latency processing
         raw_stream = self.spark.readStream \
             .format("kafka") \
             .option("kafka.bootstrap.servers", self.args.kafka_servers) \
@@ -198,7 +240,7 @@ class LiveSensePipeline:
             .option("startingOffsets", "earliest") \
             .option("failOnDataLoss", "false") \
             .load()
-
+        # Parse the Kafka stream and extract the JSON payload
         parsed_stream = raw_stream.selectExpr("CAST(value as STRING)") \
             .select(from_json(col("value"), self.get_schema()).alias("data")) \
             .select("data.*")
@@ -207,7 +249,7 @@ class LiveSensePipeline:
         
         query = parsed_stream.writeStream \
             .foreachBatch(self.process_batch_driver) \
-            .trigger(processingTime="2 seconds") \
+            .trigger(processingTime=f"{self.args.trigger_seconds} seconds") \
             .option("checkpointLocation", checkpoint_path) \
             .start()
 
@@ -229,6 +271,7 @@ def get_args():
     )
     parser.add_argument("--redis-host", default="redis", help="Redis host")
     parser.add_argument("--redis-port", type=int, default=6379, help="Redis port")
+    parser.add_argument("--trigger-seconds", type=int, default=2, help="Streaming trigger interval in seconds")
     return parser.parse_args()  
 
 if __name__ == "__main__":

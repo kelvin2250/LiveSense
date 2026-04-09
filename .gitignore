@@ -38,3 +38,5 @@ onnx_models/
 models/
 
 scripts/
+
+ARCHITECTURE.md

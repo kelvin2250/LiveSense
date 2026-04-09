@@ -15,7 +15,7 @@ interaction_labels = [
 ]
 
 model_dir = "models/interaction_type"  # Đảm bảo thư mục này có chứa model PyTorch đã train
-onnx_save_dir = "onnx_models/onnx_models/interaction_model_onnx"
+onnx_save_dir = "test_onnx/interaction_model_onnx"
 
 # ---------------------------------------------------------
 # 2. CONVERT & SAVE (Chỉ cần chạy 1 lần)

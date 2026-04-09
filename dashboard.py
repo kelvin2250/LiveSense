@@ -33,6 +33,7 @@ th_s6 = st.sidebar.slider("S6 - Engagement Heat (Viral)", 0.0, 50.0, 15.0, help=
 # 3. Main Content
 st.title("⚡ LiveSense QoE - Realtime Signals")
 st.markdown("Monitoring **6 Operational Signals** from Spark Streaming via Redis")
+st.caption(f"Redis key dang theo doi: {redis_key}")
 st.markdown("---")
 
 # 4. Kết nối Redis
@@ -63,6 +64,13 @@ chart_placeholder = st.empty()
 # 6. Session State cho Lịch sử
 if 'df_history' not in st.session_state:
     st.session_state.df_history = pd.DataFrame(columns=['timestamp', 'S1', 'S2', 'S3', 'S4', 'S5', 'S6'])
+if 'last_topic' not in st.session_state:
+    st.session_state.last_topic = input_topic
+
+# Reset chart history when topic changes to avoid mixing old and new streams.
+if st.session_state.last_topic != input_topic:
+    st.session_state.df_history = pd.DataFrame(columns=['timestamp', 'S1', 'S2', 'S3', 'S4', 'S5', 'S6'])
+    st.session_state.last_topic = input_topic
 
 def update_dashboard():
     # Lấy dữ liệu từ Redis (Key phải khớp với consumer.py)
@@ -83,8 +91,8 @@ def update_dashboard():
         # --- ROW 1 ---
         with metric_s1.container():
             st.metric(
-                label="S1 - Chat Load (msg/s)",
-                value=s1,
+                label="S1 - Chat Load (msg/min)",
+                value=f"{s1:.2f}",
                 delta=f"Total: {total}",
                 delta_color="inverse" if s1 > th_s1 else "normal"
             )
@@ -99,8 +107,8 @@ def update_dashboard():
 
         with metric_s3.container():
             st.metric(
-                label="S3 - Demand Pressure",
-                value=s3,
+                label="S3 - Demand Pressure (req/min)",
+                value=f"{s3:.2f}",
                 delta="High Demand" if s3 > th_s3 else "Normal",
                 delta_color="inverse" if s3 > th_s3 else "normal"
             )
@@ -116,16 +124,16 @@ def update_dashboard():
 
         with metric_s5.container():
             st.metric(
-                label="S5 - Toxic Pressure",
-                value=s5,
+                label="S5 - Toxic Pressure (msg/min)",
+                value=f"{s5:.2f}",
                 delta="TOXIC ATTACK" if s5 > th_s5 else "Safe",
                 delta_color="inverse" if s5 > th_s5 else "normal"
             )
 
         with metric_s6.container():
             st.metric(
-                label="S6 - Engagement Heat",
-                value=s6,
+                label="S6 - Engagement Heat (event/min)",
+                value=f"{s6:.2f}",
                 delta="VIRAL MOMENT 🔥" if s6 > th_s6 else "Normal",
                 delta_color="normal" # Green is good
             )
@@ -147,8 +155,12 @@ def update_dashboard():
             st.line_chart(
                 st.session_state.df_history.set_index('timestamp')
             )
+    else:
+        st.warning(
+            f"Chua co du lieu trong Redis key '{redis_key}'. Hay dam bao consumer dang chay cung --topic voi dashboard."
+        )
 
-# Auto-refresh loop
-while True:
-    update_dashboard()
-    time.sleep(refresh_rate) # Cập nhật mỗi 1 giây
+# Auto-refresh theo chu ky de Streamlit rerun sach se va widget phan hoi on dinh
+update_dashboard()
+time.sleep(refresh_rate)
+st.rerun()
