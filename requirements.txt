@@ -1,4 +1,5 @@
 google-api-python-client
+huggingface_hub
 kafka-python
 numpy
 onnxruntime

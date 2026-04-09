@@ -67,11 +67,29 @@
 ## 📚 Documentation
 
 - Tài liệu chi tiết dự án: [docs/SE363_Q11.pdf](docs/SE363_Q11.pdf)
-- Kiến trúc hệ thống: [ARCHITECTURE.md](ARCHITECTURE.md)
 
 ---
 
 ## 🚀 Installation & Usage
+
+### ⚡ One-Command Setup (Windows PowerShell)
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\setup.ps1 -ModelRepoId "Phatthachdau123/livesense-qoe-models"
+```
+
+Hoac neu da khai bao `MODEL_REPO_ID` trong `.env`, chi can chay:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\setup.ps1
+```
+
+Lệnh trên sẽ tự động:
+- Tạo `.env` từ `.env.example` (nếu chưa có)
+- Cài dependencies từ `requirements.txt`
+- Tải `onnx_models/` từ Hugging Face model repo
+
+Sau đó tiếp tục chạy hạ tầng và pipeline ở các bước bên dưới.
 
 ### Yêu cầu tiên quyết (Prerequisites):
 *   Docker & Docker Compose
@@ -83,7 +101,6 @@ Dựng toàn bộ các services (Spark, Kafka, Redis, Postgres, Metabase) bằng
 
 ```bash
 # Tại thư mục gốc dự án
-copy .env.example .env
 docker-compose up -d
 ```
 *Chờ khoảng 30s - 1 phút để các container khởi động hoàn toàn.*
@@ -92,7 +109,7 @@ docker-compose up -d
 Cài đặt các thư viện cần thiết để chạy Producer và Dashboard ở máy local.
 
 ```bash
-pip install kafka-python pandas streamlit redis
+pip install -r requirements.txt
 ```
 
 ### Bước 3: Kích hoạt hệ thống (Theo thứ tự)
